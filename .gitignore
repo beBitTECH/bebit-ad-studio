@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+.DS_Store
+node_modules/
+static/img/speaker.jpg
+static/img/speaker*.png
+static/img/logo.png
+static/img/darklogo.png
