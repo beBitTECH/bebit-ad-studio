@@ -1,13 +1,11 @@
 /**
  * convert.mjs — HTML → JPG 批量轉換
  *
- * 使用方式（在 output/ 資料夾內）：
- *   node ../convert.mjs
- *
- * 或指定目錄：
+ * 使用方式（本地，指定同一目錄）：
  *   node convert.mjs --dir ./output
  *
- * 需要：npm install puppeteer
+ * 伺服器端呼叫（分離 input / output 目錄）：
+ *   node convert.mjs --input /tmp/html_dir --output /tmp/jpeg_dir
  *
  * 白邊修正：
  *   - page.setViewport 強制 1080×1080
@@ -24,22 +22,40 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── 參數解析 ──
 const args = process.argv.slice(2);
-const dirIdx = args.indexOf('--dir');
-const targetDir = dirIdx !== -1 ? args[dirIdx + 1] : './output';
-const absDir = path.resolve(__dirname, targetDir);
 
-const files = fs.readdirSync(absDir).filter(f => f.endsWith('.html'));
+const inputIdx  = args.indexOf('--input');
+const outputIdx = args.indexOf('--output');
+const dirIdx    = args.indexOf('--dir');  // backwards compat: input = output
+
+const inputDir  = inputIdx  !== -1 ? args[inputIdx  + 1]
+                : dirIdx    !== -1 ? args[dirIdx + 1]
+                : './output';
+const outputDir = outputIdx !== -1 ? args[outputIdx + 1]
+                : dirIdx    !== -1 ? args[dirIdx + 1]
+                : inputDir;
+
+const absInput  = path.resolve(__dirname, inputDir);
+const absOutput = path.resolve(__dirname, outputDir);
+
+const files = fs.readdirSync(absInput).filter(f => f.endsWith('.html'));
 if (files.length === 0) {
-  console.error(`❌ 找不到 HTML 檔案：${absDir}`);
+  console.error(`❌ 找不到 HTML 檔案：${absInput}`);
   process.exit(1);
 }
 
+fs.mkdirSync(absOutput, { recursive: true });
+
 console.log(`\n🚀 HTML → JPG 轉換`);
-console.log(`   來源：${absDir}`);
+console.log(`   來源：${absInput}`);
+console.log(`   輸出：${absOutput}`);
 console.log(`   共 ${files.length} 個檔案\n`);
+
+// Use system Chromium in Docker, fall back to Puppeteer's bundled binary locally
+const executablePath = fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined;
 
 const browser = await puppeteer.launch({
   headless: 'new',
+  executablePath,
   args: ['--no-sandbox', '--disable-setuid-sandbox'],
 });
 
@@ -50,13 +66,13 @@ for (const file of files) {
   // ★ 白邊修正關鍵：強制 viewport = 1080×1080，不讓瀏覽器自行縮放
   await page.setViewport({ width: 1080, height: 1080, deviceScaleFactor: 1 });
 
-  const fileUrl = `file://${path.join(absDir, file)}`;
+  const fileUrl = `file://${path.join(absInput, file)}`;
   await page.goto(fileUrl, { waitUntil: 'networkidle0', timeout: 15000 });
 
-  // 等字體載入
-  await page.waitForTimeout(400).catch(() => {});
+  // 等字體載入（waitForTimeout 已在 Puppeteer v22 移除，改用 setTimeout）
+  await new Promise(r => setTimeout(r, 400));
 
-  const outPath = path.join(absDir, file.replace('.html', '.jpg'));
+  const outPath = path.join(absOutput, file.replace('.html', '.jpg'));
   await page.screenshot({
     path: outPath,
     type: 'jpeg',
@@ -72,4 +88,4 @@ for (const file of files) {
 }
 
 await browser.close();
-console.log(`\n🎉 完成！${done} 個 JPG 已存至 ${absDir}/`);
+console.log(`\n🎉 完成！${done} 個 JPG 已存至 ${absOutput}/`);

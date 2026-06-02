@@ -2,7 +2,7 @@
 app.py — beBit TECH Ad Studio v5
 整合 Gemini 即時文案生成
 """
-import os, io, zipfile, json
+import os, io, zipfile, json, shutil, subprocess, tempfile
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 
@@ -79,10 +79,10 @@ def api_generate():
             from skill_a_gemini import get_copies_fallback
             copies = get_copies_fallback()
 
-        colors   = get_colors()
+        colors    = get_colors()
         color_seq = get_sequence()
-        spk_list = get_speakers()
-        valid    = [k for k in chosen if k in spk_list]
+        spk_list  = get_speakers()
+        valid     = [k for k in chosen if k in spk_list]
         if not valid:
             return jsonify({'error': '請至少選擇一位講者'}), 400
 
@@ -111,8 +111,16 @@ def api_generate():
                     'deco':       i % 5,
                 })
 
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # ── 伺服器端 HTML → JPEG 轉換 ──
+        # HTML 寫入 temp 目錄；同時複製 static/img/ 讓 Puppeteer 透過 file:// 解析相對路徑
+        html_dir = tempfile.mkdtemp()
+        jpeg_dir = tempfile.mkdtemp()
+        try:
+            img_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'img')
+            for img in os.listdir(img_src):
+                shutil.copy(os.path.join(img_src, img), os.path.join(html_dir, img))
+
+            fnames = []
             for i, p in enumerate(plan, 1):
                 cp = copies[p['copy_key']]
                 co = colors[p['color_key']]
@@ -122,23 +130,43 @@ def api_generate():
                 else:
                     html  = render_single(p['layout_key'], cp, p['color_key'], p['speaker'], p['deco'])
                     label = p['speaker']
-                fname = f"{i:02d}_{label}_{p['copy_key']}_{p['layout_key']}_{p['color_key']}_{co['name']}.html"
-                zf.writestr(fname, html)
+                fname = f"{i:02d}_{label}_{p['copy_key']}_{p['layout_key']}_{p['color_key']}_{co['name']}"
+                with open(os.path.join(html_dir, fname + '.html'), 'w', encoding='utf-8') as f:
+                    f.write(html)
+                fnames.append(fname)
 
-            zf.writestr('README.txt', f"""beBit TECH Ad Studio 生成結果
+            # 呼叫 convert.mjs 進行截圖
+            convert_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'convert.mjs')
+            result = subprocess.run(
+                ['node', convert_script, '--input', html_dir, '--output', jpeg_dir],
+                capture_output=True, text=True, timeout=300,
+                cwd=os.path.dirname(os.path.abspath(__file__))
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Puppeteer conversion failed:\n{result.stderr}")
+
+            # 將 JPEG 打包成 ZIP
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for fname in fnames:
+                    jpeg_path = os.path.join(jpeg_dir, fname + '.jpg')
+                    if os.path.exists(jpeg_path):
+                        zf.write(jpeg_path, fname + '.jpg')
+                zf.writestr('README.txt', f"""beBit TECH Ad Studio 生成結果
 活動：{data.get('event_name','')}
 日期：{event['date']} {event['time']}  地點：{event['venue']}
 講者：{', '.join(spk_list[k]['name'] for k in valid)}
-共計：{len(plan)} 個廣告
+共計：{len(plan)} 個廣告""")
 
-使用：把 logo.png / darklogo.png / speaker*.jpg 放入同一資料夾
-轉 JPG：npm install puppeteer && node convert.mjs""")
+            zip_buf.seek(0)
+            slug = data.get('event_name', 'ads').replace(' ', '_')[:14]
+            return send_file(zip_buf, mimetype='application/zip',
+                             as_attachment=True,
+                             download_name=f'bebit_ads_{slug}.zip')
 
-        zip_buf.seek(0)
-        slug = data.get('event_name','ads').replace(' ','_')[:14]
-        return send_file(zip_buf, mimetype='application/zip',
-                         as_attachment=True,
-                         download_name=f'bebit_ads_{slug}.zip')
+        finally:
+            shutil.rmtree(html_dir, ignore_errors=True)
+            shutil.rmtree(jpeg_dir, ignore_errors=True)
 
     except Exception as e:
         import traceback
