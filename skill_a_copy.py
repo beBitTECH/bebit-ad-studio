@@ -1,3 +1,8 @@
+# skill_a_copy.py — Static copy fallback
+# Use this when Gemini API is unavailable or you want zero API cost.
+# Also the recommended starting point if integrating Groq as an alternative LLM.
+# Primary copy generation is handled by skill_a_gemini.py
+
 """
 SKILL A — 文案引擎
 輸入：活動資訊 dict
