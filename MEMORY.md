@@ -99,3 +99,37 @@ If you are reading this after a session change:
 - Read PROJECT.md first for full system context
 - The two immediate tasks above (Railway migration + server-side JPEG) are unstarted
 - Do not modify the HTML templates or skill files unless explicitly asked
+
+---
+
+## Deployment Update (2026-06-02)
+
+### Migrated from Render to Railway
+- Production URL: https://bebit-ad-studio-production.up.railway.app
+- Render is no longer used
+- Railway uses Dockerfile builder (not Nixpacks — Nixpacks failed to detect Python when package.json was present)
+- Port: Railway assigns $PORT dynamically; gunicorn binds to 0.0.0.0:$PORT
+
+### Railway deployment lessons learned
+| Problem | Solution |
+|---------|----------|
+| Nixpacks detected Node.js instead of Python (package.json present) | Switched to Dockerfile builder |
+| python3.11 / python3 / gunicorn not found in container | Dockerfile uses python:3.11-slim base image |
+| Chinese text rendering as boxes in JPEG output | Added fonts-noto-cjk to Dockerfile apt-get install |
+| libasound2 not found on Debian bookworm | Use libasound2t64 instead |
+| libxss1 not found on Debian bookworm | Remove it; Chromium handles it transitively |
+
+### Server-side JPEG conversion (completed 2026-06-02)
+- Users now download JPEG ZIP directly — no local Node.js required
+- app.py writes HTML to tempfile, copies static/img/ alongside, calls node convert.mjs via subprocess, zips JPEGs, cleans up with try/finally
+- convert.mjs updated: --input/--output args, auto-detects /usr/bin/chromium in Docker, setTimeout replaces deprecated waitForTimeout
+- Dockerfile includes nodejs, npm, chromium, fonts-noto-cjk
+
+### API Key
+- GEMINI_API_KEY set in Railway Variables (not in code)
+- Key registered under Marcus's personal Google account: marcusbetch@gmail.com
+- Company account cannot create API keys (lacks permission)
+
+### Images in git
+- All speaker photos and logos are committed to the repo (static/img/)
+- Privacy was not a concern for this project
