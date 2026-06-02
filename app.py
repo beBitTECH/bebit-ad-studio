@@ -146,5 +146,6 @@ def api_generate():
 
 
 if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
     print('\n🚀 beBit TECH Ad Studio v5\n   http://localhost:5000\n')
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=port)
