@@ -67,3 +67,35 @@ Every entry confirmed in source code or encountered during development.
 | Light palette (L1–L8) | `logo.png` |
 
 `skill_c_color.py::get_logo(color_key)` handles this automatically.
+
+---
+
+## Current Status & Next Steps (as of 2026-06-02)
+
+### Deployment
+- Currently deployed on Render free plan at https://bebit-ad-studio.onrender.com
+- Problem: Render free plan sleeps after 15 minutes of inactivity (30–60 sec cold start)
+- Decision: migrate to Railway (better Flask support, no sleep on free plan)
+- Status: migration not yet started
+
+### Known limitation: HTML to JPEG requires local Node.js
+- Current flow: user downloads ZIP from web UI → runs node convert.mjs locally → gets JPEG
+- Problem: requires Node.js installed on local machine, not viable for non-technical users
+- Decision: move Puppeteer screenshot step to the server so users download JPEG directly
+- Status: development not yet started — this is the next feature to build after Railway migration
+
+### Recommended next steps in order
+1. Migrate from Render to Railway (move deployment, verify Flask runs correctly, update production URL)
+2. Add server-side Puppeteer: modify app.py to run convert.mjs on the server and return JPEG directly instead of HTML ZIP
+3. Update PROJECT.md and README.md to reflect new deployment URL and simplified download flow
+
+### Why these decisions were made
+- Railway chosen over Vercel (Vercel designed for frontend, extra config needed for Flask), Render paid plan ($7/month), and Hugging Face Spaces (slow cold start)
+- Server-side conversion chosen to remove Node.js dependency from end users
+
+## Handover note for incoming AI agent
+If you are reading this after a session change:
+- The repo is at github.com/beBitTECH/bebit-ad-studio (private)
+- Read PROJECT.md first for full system context
+- The two immediate tasks above (Railway migration + server-side JPEG) are unstarted
+- Do not modify the HTML templates or skill files unless explicitly asked
